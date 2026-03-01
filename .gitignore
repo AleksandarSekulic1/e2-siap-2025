@@ -1,1 +1,8 @@
 venv/ 
+.venv/
+Project/venv/
+Project/.venv/
+__pycache__/
+*.pyc
+*.pyo
+plots/
