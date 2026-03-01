@@ -9,7 +9,7 @@ U ovom projektu razvili smo machine learning model koji predviđa dnevni trend c
 Rezultati pokazuju da model uspešno predviđa sve tri klase i ostvaruje performanse iznad slučajnog pogađanja, što je značajno za ovako težak finansijski problem. Glavna vrednost projekta je robustan i jasan pipeline: od preuzimanja podataka, preko feature engineering-a, do evaluacije i interpretacije rezultata kroz grafikone. Kao sledeći korak planiramo poređenje sa naprednijim modelima i dodatnu validaciju na novijim out-of-sample podacima.
 
 ## Cilj projekta
-s
+
 Model predviđa 3 klase dnevnog kretanja cene zlata:
 - **Pad**: promena < -0.5%
 - **Stabilno**: promena između -0.5% i +0.5%
