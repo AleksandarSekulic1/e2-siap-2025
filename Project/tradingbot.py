@@ -13,6 +13,8 @@ import numpy as np
 import warnings
 import matplotlib.pyplot as plt
 import seaborn as sns
+from pathlib import Path
+from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import confusion_matrix, classification_report
 
@@ -36,7 +38,7 @@ THRESHOLD = 0.005   # 0.5% prag za klasifikaciju
 LOOKBACK  = 30      # 30 dana unazad
 
 
-def plot_class_distribution(y_train, y_val, y_test):
+def plot_class_distribution(y_train, y_val, y_test, save_path=None):
     """Prikaz distribucije klasa po skupovima (trening/validacija/test)."""
     class_labels = ['Pad ↓', 'Stabilno ↔', 'Rast ↑']
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
@@ -67,10 +69,12 @@ def plot_class_distribution(y_train, y_val, y_test):
 
     fig.suptitle('Distribucija klasa po skupovima', fontsize=13, fontweight='bold')
     plt.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.show()
 
 
-def plot_confusion_and_report(y_true, y_pred, class_names):
+def plot_confusion_and_report(y_true, y_pred, class_names, save_path=None):
     """Prikaz confusion matrix i classification report tabele."""
     cm = confusion_matrix(y_true, y_pred)
 
@@ -112,10 +116,12 @@ def plot_confusion_and_report(y_true, y_pred, class_names):
     ax2.set_title('Classification Report', fontsize=12, fontweight='bold', pad=20)
 
     plt.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.show()
 
 
-def plot_feature_importance(model, features, lookback=30, top_n=15):
+def plot_feature_importance(model, features, lookback=30, top_n=15, save_path=None):
     """Prikaz top-N najvaznijih feature-a za Random Forest model."""
     importances = model.feature_importances_
     feature_names = []
@@ -145,16 +151,45 @@ def plot_feature_importance(model, features, lookback=30, top_n=15):
     ax.grid(axis='x', alpha=0.3)
 
     plt.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.show()
+
+
+def train_random_forest_with_progress(X_train_flat, y_train, X_val_flat, y_val,
+                                      epoch_trees=(100, 200, 300, 400, 500)):
+    """Trening RF modela sa epoch-like progres ispisom po broju stabala."""
+    rf = build_random_forest()
+    rf.set_params(warm_start=True, n_estimators=0)
+
+    total_epochs = len(epoch_trees)
+    print("\n  Epoch-like progres treniranja (broj stabala):")
+
+    for epoch_idx, n_trees in enumerate(epoch_trees, start=1):
+        rf.set_params(n_estimators=n_trees)
+        rf.fit(X_train_flat, y_train)
+
+        train_acc = np.mean(rf.predict(X_train_flat) == y_train) * 100
+        val_acc = np.mean(rf.predict(X_val_flat) == y_val) * 100
+        print(f"    [Epohа {epoch_idx:>2}/{total_epochs}] stabala={n_trees:>3} | "
+              f"train_acc={train_acc:>6.2f}% | val_acc={val_acc:>6.2f}%")
+
+    return rf
 
 
 def main():
     """Glavni program za predikciju cene zlata."""
+
+    project_dir = Path(__file__).resolve().parent
+    plots_dir = project_dir / 'plots'
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    run_tag = datetime.now().strftime('%Y%m%d_%H%M%S')
     
     print("\n" + "=" * 70)
     print("  PREDIKCIJA CENE ZLATA")
     print("  Random Forest klasifikator")
     print("=" * 70)
+    print(f"  Plotovi ce biti sacuvani u: {plots_dir}")
 
     # ===================================================================
     # PRIPREMA PODATAKA
@@ -229,7 +264,9 @@ def main():
     print("=" * 70)
 
     try:
-        plot_class_distribution(y_train, y_val, y_test)
+        path_dist = plots_dir / f'class_distribution_{run_tag}.png'
+        plot_class_distribution(y_train, y_val, y_test, save_path=path_dist)
+        print(f"\n  [OK] Sacuvan plot: {path_dist.name}")
     except Exception as exc:
         print(f"\n  [!] Preskacem plot distribucije klasa: {exc}")
 
@@ -285,10 +322,16 @@ def main():
     print("\n" + "=" * 70)
     print("  TRENIRANJE RANDOM FOREST MODELA...")
     print("=" * 70)
-    print("  Parametri: 500 stabala, max_depth=20, balanced weights\n")
+    print("  Parametri: 500 stabala, max_depth=20, balanced weights")
+    print("  Napomena: ispod ide epoch-like progres kroz korake broja stabala\n")
 
-    rf = build_random_forest()
-    rf.fit(X_train_flat, y_train_os.flatten())
+    rf = train_random_forest_with_progress(
+        X_train_flat,
+        y_train_os.flatten(),
+        X_val_flat,
+        y_val,
+        epoch_trees=(100, 200, 300, 400, 500)
+    )
     y_pred_rf = rf.predict(X_test_flat)
 
     # ===================================================================
@@ -298,12 +341,17 @@ def main():
                                      "Random Forest")
 
     try:
-        plot_confusion_and_report(y_test, y_pred_rf, class_names)
+        path_cm = plots_dir / f'confusion_report_{run_tag}.png'
+        plot_confusion_and_report(y_test, y_pred_rf, class_names, save_path=path_cm)
+        print(f"\n  [OK] Sacuvan plot: {path_cm.name}")
     except Exception as exc:
         print(f"\n  [!] Preskacem confusion/report plot: {exc}")
 
     try:
-        plot_feature_importance(rf, FEATURES, lookback=LOOKBACK, top_n=15)
+        path_fi = plots_dir / f'feature_importance_{run_tag}.png'
+        plot_feature_importance(rf, FEATURES, lookback=LOOKBACK, top_n=15,
+                                save_path=path_fi)
+        print(f"\n  [OK] Sacuvan plot: {path_fi.name}")
     except Exception as exc:
         print(f"\n  [!] Preskacem feature importance plot: {exc}")
 
