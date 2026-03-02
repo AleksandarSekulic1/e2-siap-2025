@@ -11,13 +11,22 @@
 
 import numpy as np
 import warnings
+import sys
+import os
+
+# === Podešavanje matplotlib-a PRE importanjaа ===
+# Koristi Agg backend za izbegavanje tkinter problema na Windows-u
+os.environ['MPLBACKEND'] = 'Agg'
+
+import matplotlib
+matplotlib.use('Agg')  # Koristi Agg backend - bez tkinter
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 from datetime import datetime
+import shutil
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import confusion_matrix, classification_report
-
 # Import modula iz package-a
 from modules import (
     get_data,
@@ -29,13 +38,27 @@ from modules import (
     evaluate_classification
 )
 
-# Konfiguracija
+# Osnovne konfiguracije
 np.random.seed(42)
 warnings.filterwarnings('ignore')
 sns.set_palette("husl")
 
 THRESHOLD = 0.005   # 0.5% prag za klasifikaciju
 LOOKBACK  = 30      # 30 dana unazad
+
+
+def _open_image_viewer(filepath):
+    """Otvori sliku sa sistemskom aplikacijom (Windows/Linux/Mac)."""
+    try:
+        if sys.platform == 'win32':
+            os.startfile(filepath)
+        elif sys.platform == 'darwin':
+            os.system(f'open "{filepath}"')
+        else:
+            os.system(f'xdg-open "{filepath}"')
+    except:
+        pass  # Tiho preskoči ako otvaranje ne uspe
+
 
 
 def plot_class_distribution(y_train, y_val, y_test, save_path=None):
@@ -71,7 +94,10 @@ def plot_class_distribution(y_train, y_val, y_test, save_path=None):
     plt.tight_layout()
     if save_path is not None:
         fig.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.show()
+    try:
+        plt.show()
+    except:
+        pass  # Izbjegni tkinter greške
 
 
 def plot_confusion_and_report(y_true, y_pred, class_names, save_path=None):
@@ -118,7 +144,10 @@ def plot_confusion_and_report(y_true, y_pred, class_names, save_path=None):
     plt.tight_layout()
     if save_path is not None:
         fig.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.show()
+    try:
+        plt.show()
+    except:
+        pass  # Izbjegni tkinter greške
 
 
 def plot_feature_importance(model, features, lookback=30, top_n=15, save_path=None):
@@ -153,7 +182,65 @@ def plot_feature_importance(model, features, lookback=30, top_n=15, save_path=No
     plt.tight_layout()
     if save_path is not None:
         fig.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.show()
+    try:
+        plt.show()
+    except:
+        pass  # Izbjegni tkinter greške
+
+
+def plot_eda_statistics(df_feat, features, save_path=None):
+    """Prikaz osnovnih statistika feature-a."""
+    print("\n" + "=" * 70)
+    print("  EKSPLORATIVNA ANALIZA PODATAKA (EDA)")
+    print("=" * 70)
+    
+    print("\n  Osnovne statistike feature-a:\n")
+    stats_df = df_feat[features].describe().T[['mean', 'std', 'min', 'max']]
+    stats_df = stats_df.round(3)
+    print(stats_df.to_string())
+    print("=" * 70)
+
+
+def plot_gold_price_timeline(df_feat, save_path=None):
+    """Prikaz trendovanja cene zlata kroz vreme."""
+    fig, ax = plt.subplots(figsize=(14, 5))
+    
+    close_data = df_feat['Close'].values.flatten() if hasattr(df_feat['Close'], 'values') else df_feat['Close']
+    x_range = range(len(close_data))
+    
+    ax.plot(x_range, close_data, linewidth=1.5, color='#45b7d1', label='Cena zlata')
+    ax.fill_between(x_range, close_data, alpha=0.2, color='#45b7d1')
+    ax.set_title('Cena zlata - Istorijski trend (2010-2025)', fontsize=13, fontweight='bold')
+    ax.set_xlabel('Redni broj dana', fontsize=11)
+    ax.set_ylabel('Cena ($)', fontsize=11)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=10)
+    
+    plt.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    try:
+        plt.show()
+    except:
+        pass  # Izbjegni tkinter greške
+
+
+def plot_correlation_matrix(df_feat, features, save_path=None):
+    """Prikazkorelacione matrice između feature-a."""
+    fig, ax = plt.subplots(figsize=(12, 10))
+    corr_matrix = df_feat[features].corr()
+    
+    sns.heatmap(corr_matrix, annot=False, cmap='coolwarm', center=0,
+                square=True, cbar_kws={'label': 'Korelacija'}, ax=ax, vmin=-1, vmax=1)
+    ax.set_title('Korelaciona Matrica - Svi Feature-i', fontsize=12, fontweight='bold')
+    
+    plt.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    try:
+        plt.show()
+    except:
+        pass  # Izbjegni tkinter greške
 
 
 def train_random_forest_with_progress(X_train_flat, y_train, X_val_flat, y_val,
@@ -171,7 +258,7 @@ def train_random_forest_with_progress(X_train_flat, y_train, X_val_flat, y_val,
 
         train_acc = np.mean(rf.predict(X_train_flat) == y_train) * 100
         val_acc = np.mean(rf.predict(X_val_flat) == y_val) * 100
-        print(f"    [Epohа {epoch_idx:>2}/{total_epochs}] stabala={n_trees:>3} | "
+        print(f"    [Epoha {epoch_idx:>2}/{total_epochs}] stabala={n_trees:>3} | "
               f"train_acc={train_acc:>6.2f}% | val_acc={val_acc:>6.2f}%")
 
     return rf
@@ -183,6 +270,11 @@ def main():
     project_dir = Path(__file__).resolve().parent
     plots_dir = project_dir / 'plots'
     plots_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Obriši sve stare plotove pre pokretanja
+    for plot_file in plots_dir.glob('*.png'):
+        plot_file.unlink()
+    
     run_tag = datetime.now().strftime('%Y%m%d_%H%M%S')
     
     print("\n" + "=" * 70)
@@ -190,6 +282,7 @@ def main():
     print("  Random Forest klasifikator")
     print("=" * 70)
     print(f"  Plotovi ce biti sacuvani u: {plots_dir}")
+    print(f"  [OK] Obrisani su svi stari plotovi iz foldera\n")
 
     # ===================================================================
     # PRIPREMA PODATAKA
@@ -201,6 +294,28 @@ def main():
     FEATURES = ['Close','MA20','EMA20','RSI14','MACD','ATR14','BB_UP','BB_LO',
                 'OBV','Price_Change','Volatility','Volume_Change',
                 'DXY','Oil','10Y_Treasury','TIP','SP500','VIX']
+
+    # ===================================================================
+    # EKSPLORATIVNA ANALIZA PODATAKA (EDA)
+    # ===================================================================
+    try:
+        plot_eda_statistics(df_feat, FEATURES, save_path=None)
+    except Exception as exc:
+        print(f"\n  [!] Preskacem EDA statistike: {exc}")
+
+    try:
+        path_timeline = plots_dir / f'gold_price_timeline_{run_tag}.png'
+        plot_gold_price_timeline(df_feat, save_path=path_timeline)
+        print(f"\n  [OK] Sacuvan plot: {path_timeline.name}")
+    except Exception as exc:
+        print(f"\n  [!] Preskacem timeline plot zlata: {exc}")
+
+    try:
+        path_corr = plots_dir / f'correlation_matrix_{run_tag}.png'
+        plot_correlation_matrix(df_feat, FEATURES, save_path=path_corr)
+        print(f"\n  [OK] Sacuvan plot: {path_corr.name}")
+    except Exception as exc:
+        print(f"\n  [!] Preskacem korelacionu matricu: {exc}")
 
     # Normalizacija podataka
     scaler = MinMaxScaler()
@@ -370,8 +485,8 @@ def main():
     print("=" * 70)
 
     if n_cls_rf == 3:
-        print(f"\n  ✓ Model uspesno predvidja sve 3 klase!")
-        print(f"  ✓ Tacnost {acc_rf:.2f}% je odlicna za ovaj problem")
+        print(f"\n  [OK] Model uspesno predvidja sve 3 klase!")
+        print(f"  [OK] Tacnost {acc_rf:.2f}% je odlicna za ovaj problem")
     
     print("\n  Napomena: Predikcija dnevne promene cene zlata je inherentno")
     print("  tezak problem zbog volatilnosti trzista. Rezultati iznad 40%")
